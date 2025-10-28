@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Avance Paramétrico: SAP S/4HANA - Grupo Portland</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .global-template-item, .silo-component { transition: all 0.3s ease-in-out; cursor: pointer; }
+        .global-template-item:hover, .silo-component:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .silo-component.defined { background-color: #059669; color: white; }
+        .silo-component.partially-defined { background-color: #f59e0b; color: white; }
+        .silo-component.not-applicable { background-color: white; color: #6b7280; text-decoration: line-through; border: 1px solid #d1d5db; }
+        .silo-component.pending { background-color: #e5e7eb; color: #6b7280; }
+        .highlight { outline: 3px solid #0ea5e9; box-shadow: 0 0 15px rgba(14, 165, 233, 0.5); }
+        .details-panel { transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out, max-height 0.4s ease-in-out; opacity: 0; transform: translateY(20px); visibility: hidden; max-height: 0; overflow: hidden; }
+        .details-panel.active { opacity: 1; transform: translateY(0); visibility: visible; max-height: 1000px; }
+        .area-pill { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; margin: 2px; font-weight: 500; cursor: pointer; transition: background-color 0.2s; }
+        #user-card { position: absolute; visibility: hidden; opacity: 0; transition: opacity 0.2s; z-index: 50; }
+        #user-card.visible { visibility: visible; opacity: 1; }
+        .content-placeholder { display: flex; justify-content: center; align-items: center; min-height: 200px; border: 2px dashed #cbd5e1; border-radius: 1rem; background-color: #f1f5f9; }
+        main.hidden { display: none; }
+        .gantt-detail-container { transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out; max-height: 0; opacity: 0; overflow: hidden; }
+        .gantt-detail-container.active { max-height: 500px; opacity: 1; }
+
+        .export-section-btn {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+        }
+        /* --- INICIO: ESTILOS DE IMPRESIÓN --- */
+        @media print {
+            @page {
+                size: A3 landscape;
+                margin: 0;
+            }
+
+            /* Ocultar elementos interactivos/innecesarios */
+            #upload-section, 
+            #details-panel-container,
+            .legend-container,
+            header, /* Oculta el header principal */
+            #controls-section, /* Oculta los controles de exportación global */
+            #user-card {
+                display: none !important;
+            }
+            
+            /* Asegurar que el contenido principal sea visible */
+            main {
+                display: block !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                space-y-16: 0; /* Tailwind class override */
+                gap: 0;
+            }
+            
+            /* Ocultar botones de exportación de sección al imprimir */
+            .export-section-btn {
+                display: none !important;
+            }
+
+            /* Forzar saltos de página antes de cada sección principal */
+            /* Esta es la regla clave que pediste */
+            #gantt-section,
+            #global-template-section,
+            #silos-section,
+            #key-users-section {
+                page-break-before: always;
+                height: 100vh; /* Ocupar toda la altura de la página */
+                width: 100vw;  /* Ocupar todo el ancho de la página */
+                display: flex;
+                flex-direction: column;
+                padding: 2rem !important; /* Añadir un poco de padding interno */
+                transform: scale(0.95); /* Escalar ligeramente para evitar desbordes */
+                transform-origin: top left;
+            }
+            
+            /* Evitar que las secciones se dividan en medio */
+            section {
+                page-break-inside: avoid;
+            }
+
+
+            /* Asegurar que los contenedores con overflow se expandan */
+            #gantt-chart, #key-user-matrix {
+                overflow-x: visible !important;
+                overflow: visible !important;
+                height: auto !important;
+            }
+
+            #silos-container {
+                display: grid !important;
+                grid-template-columns: repeat(4, 1fr) !important; /* Mantener 4 columnas */
+            }
+            
+            /* Quitar 'sticky' de los encabezados para impresión */
+            #gantt-chart .sticky, #key-user-matrix .sticky {
+                position: static !important;
+            }
+            
+            /* Forzar la impresión de colores de fondo y texto */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            /* Quitar sombras y forzar bordes visibles */
+            section, .global-template-item, .silo-component, table, th, td {
+                 box-shadow: none !important;
+                 border-color: #e2e8f0 !important; /* Aclarar bordes para que no sean tan gruesos */
+            }
+        }
+        /* --- FIN: ESTILOS DE IMPRESIÓN --- */
+    </style>
+<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.left-0{left:0px}.top-0{top:0px}.z-10{z-index:10}.mx-auto{margin-left:auto;margin-right:auto}.mb-2{margin-bottom:0.5rem}.mb-4{margin-bottom:1rem}.mb-6{margin-bottom:1.5rem}.mb-8{margin-bottom:2rem}.mr-2{margin-right:0.5rem}.mr-3{margin-right:0.75rem}.mt-2{margin-top:0.5rem}.mb-1{margin-bottom:0.25rem}.mb-3{margin-bottom:0.75rem}.ml-2{margin-left:0.5rem}.mt-1{margin-top:0.25rem}.mt-8{margin-top:2rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-5{height:1.25rem}.h-6{height:1.5rem}.h-10{height:2.5rem}.h-4{height:1rem}.h-full{height:100%}.w-5{width:1.25rem}.w-6{width:1.5rem}.w-64{width:16rem}.w-full{width:100%}.w-1\/4{width:25%}.w-4{width:1rem}.min-w-\[50px\]{min-width:50px}.max-w-md{max-width:28rem}.shrink-0{flex-shrink:0}.flex-grow{flex-grow:1}.border-collapse{border-collapse:collapse}@keyframes spin{to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}.cursor-pointer{cursor:pointer}.grid-cols-1{grid-template-columns:repeat(1, minmax(0, 1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.gap-4{gap:1rem}.gap-6{gap:1.5rem}.gap-x-6{column-gap:1.5rem}.gap-y-3{row-gap:0.75rem}.space-y-1 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.25rem * var(--tw-space-y-reverse))}.space-y-16 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(4rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(4rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-8 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(2rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(2rem * var(--tw-space-y-reverse))}.space-x-2 > :not([hidden]) ~ :not([hidden]){--tw-space-x-reverse:0;margin-right:calc(0.5rem * var(--tw-space-x-reverse));margin-left:calc(0.5rem * calc(1 - var(--tw-space-x-reverse)))}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:0.5rem}.rounded{border-radius:0.25rem}.rounded-xl{border-radius:0.75rem}.rounded-t-lg{border-top-left-radius:0.5rem;border-top-right-radius:0.5rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-l{border-left-width:1px}.border-sky-200{--tw-border-opacity:1;border-color:rgb(186 230 253 / var(--tw-border-opacity, 1))}.border-slate-200{--tw-border-opacity:1;border-color:rgb(226 232 240 / var(--tw-border-opacity, 1))}.border-slate-300{--tw-border-opacity:1;border-color:rgb(203 213 225 / var(--tw-border-opacity, 1))}.border-gray-300{--tw-border-opacity:1;border-color:rgb(209 213 219 / var(--tw-border-opacity, 1))}.bg-indigo-600{--tw-bg-opacity:1;background-color:rgb(79 70 229 / var(--tw-bg-opacity, 1))}.bg-sky-50{--tw-bg-opacity:1;background-color:rgb(240 249 255 / var(--tw-bg-opacity, 1))}.bg-slate-100{--tw-bg-opacity:1;background-color:rgb(241 245 249 / var(--tw-bg-opacity, 1))}.bg-teal-600{--tw-bg-opacity:1;background-color:rgb(13 148 136 / var(--tw-bg-opacity, 1))}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.bg-amber-500{--tw-bg-opacity:1;background-color:rgb(245 158 11 / var(--tw-bg-opacity, 1))}.bg-blue-100{--tw-bg-opacity:1;background-color:rgb(219 234 254 / var(--tw-bg-opacity, 1))}.bg-blue-200{--tw-bg-opacity:1;background-color:rgb(191 219 254 / var(--tw-bg-opacity, 1))}.bg-cyan-100{--tw-bg-opacity:1;background-color:rgb(207 250 254 / var(--tw-bg-opacity, 1))}.bg-emerald-600{--tw-bg-opacity:1;background-color:rgb(5 150 105 / var(--tw-bg-opacity, 1))}.bg-fuchsia-100{--tw-bg-opacity:1;background-color:rgb(250 232 255 / var(--tw-bg-opacity, 1))}.bg-fuchsia-200{--tw-bg-opacity:1;background-color:rgb(245 208 254 / var(--tw-bg-opacity, 1))}.bg-gray-100{--tw-bg-opacity:1;background-color:rgb(243 244 246 / var(--tw-bg-opacity, 1))}.bg-green-100{--tw-bg-opacity:1;background-color:rgb(220 252 231 / var(--tw-bg-opacity, 1))}.bg-green-200{--tw-bg-opacity:1;background-color:rgb(187 247 208 / var(--tw-bg-opacity, 1))}.bg-orange-100{--tw-bg-opacity:1;background-color:rgb(255 237 213 / var(--tw-bg-opacity, 1))}.bg-orange-200{--tw-bg-opacity:1;background-color:rgb(254 215 170 / var(--tw-bg-opacity, 1))}.bg-purple-100{--tw-bg-opacity:1;background-color:rgb(243 232 255 / var(--tw-bg-opacity, 1))}.bg-purple-200{--tw-bg-opacity:1;background-color:rgb(233 213 255 / var(--tw-bg-opacity, 1))}.bg-red-100{--tw-bg-opacity:1;background-color:rgb(254 226 226 / var(--tw-bg-opacity, 1))}.bg-red-200{--tw-bg-opacity:1;background-color:rgb(254 202 202 / var(--tw-bg-opacity, 1))}.bg-sky-100{--tw-bg-opacity:1;background-color:rgb(224 242 254 / var(--tw-bg-opacity, 1))}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240 / var(--tw-bg-opacity, 1))}.bg-slate-50{--tw-bg-opacity:1;background-color:rgb(248 250 252 / var(--tw-bg-opacity, 1))}.p-2{padding:0.5rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.p-5{padding:1.25rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-3{padding-top:0.75rem;padding-bottom:0.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.pb-2{padding-bottom:0.5rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.align-top{vertical-align:top}.text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-xs{font-size:0.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.text-cyan-400{--tw-text-opacity:1;color:rgb(34 211 238 / var(--tw-text-opacity, 1))}.text-emerald-500{--tw-text-opacity:1;color:rgb(16 185 129 / var(--tw-text-opacity, 1))}.text-indigo-500{--tw-text-opacity:1;color:rgb(99 102 241 / var(--tw-text-opacity, 1))}.text-red-500{--tw-text-opacity:1;color:rgb(239 68 68 / var(--tw-text-opacity, 1))}.text-slate-500{--tw-text-opacity:1;color:rgb(100 116 139 / var(--tw-text-opacity, 1))}.text-slate-600{--tw-text-opacity:1;color:rgb(71 85 105 / var(--tw-text-opacity, 1))}.text-slate-800{--tw-text-opacity:1;color:rgb(30 41 59 / var(--tw-text-opacity, 1))}.text-slate-900{--tw-text-opacity:1;color:rgb(15 23 42 / var(--tw-text-opacity, 1))}.text-teal-500{--tw-text-opacity:1;color:rgb(20 184 166 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.text-blue-800{--tw-text-opacity:1;color:rgb(30 64 175 / var(--tw-text-opacity, 1))}.text-cyan-800{--tw-text-opacity:1;color:rgb(21 94 117 / var(--tw-text-opacity, 1))}.text-fuchsia-800{--tw-text-opacity:1;color:rgb(134 25 143 / var(--tw-text-opacity, 1))}.text-gray-500{--tw-text-opacity:1;color:rgb(107 114 128 / var(--tw-text-opacity, 1))}.text-green-800{--tw-text-opacity:1;color:rgb(22 101 52 / var(--tw-text-opacity, 1))}.text-indigo-700{--tw-text-opacity:1;color:rgb(67 56 202 / var(--tw-text-opacity, 1))}.text-orange-800{--tw-text-opacity:1;color:rgb(154 52 18 / var(--tw-text-opacity, 1))}.text-purple-800{--tw-text-opacity:1;color:rgb(107 33 168 / var(--tw-text-opacity, 1))}.text-red-800{--tw-text-opacity:1;color:rgb(153 27 27 / var(--tw-text-opacity, 1))}.text-sky-800{--tw-text-opacity:1;color:rgb(7 89 133 / var(--tw-text-opacity, 1))}.text-slate-400{--tw-text-opacity:1;color:rgb(148 163 184 / var(--tw-text-opacity, 1))}.text-slate-700{--tw-text-opacity:1;color:rgb(51 65 85 / var(--tw-text-opacity, 1))}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.opacity-25{opacity:0.25}.opacity-75{opacity:0.75}.shadow-lg{--tw-shadow:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 10px 15px -3px var(--tw-shadow-color), 0 4px 6px -4px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-md{--tw-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-xl{--tw-shadow:0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow{--tw-shadow:0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.transition-colors{transition-property:color, background-color, border-color, fill, stroke, -webkit-text-decoration-color;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, -webkit-text-decoration-color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.transition-transform{transition-property:transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.duration-200{transition-duration:200ms}.file\:mr-4::file-selector-button{margin-right:1rem}.file\:rounded-full::file-selector-button{border-radius:9999px}.file\:border-0::file-selector-button{border-width:0px}.file\:bg-indigo-50::file-selector-button{--tw-bg-opacity:1;background-color:rgb(238 242 255 / var(--tw-bg-opacity, 1))}.file\:px-4::file-selector-button{padding-left:1rem;padding-right:1rem}.file\:py-2::file-selector-button{padding-top:0.5rem;padding-bottom:0.5rem}.file\:text-sm::file-selector-button{font-size:0.875rem;line-height:1.25rem}.file\:font-semibold::file-selector-button{font-weight:600}.file\:text-indigo-700::file-selector-button{--tw-text-opacity:1;color:rgb(67 56 202 / var(--tw-text-opacity, 1))}.hover\:bg-indigo-700:hover{--tw-bg-opacity:1;background-color:rgb(67 56 202 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-200:hover{--tw-bg-opacity:1;background-color:rgb(226 232 240 / var(--tw-bg-opacity, 1))}.hover\:bg-teal-700:hover{--tw-bg-opacity:1;background-color:rgb(15 118 110 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-50:hover{--tw-bg-opacity:1;background-color:rgb(248 250 252 / var(--tw-bg-opacity, 1))}.hover\:file\:bg-indigo-100::file-selector-button:hover{--tw-bg-opacity:1;background-color:rgb(224 231 255 / var(--tw-bg-opacity, 1))}@media (min-width: 768px){.md\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.md\:p-8{padding:2rem}.md\:text-4xl{font-size:2.25rem;line-height:2.5rem}}@media (min-width: 1024px){.lg\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}.lg\:grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}}</style></head>
+<body class="text-slate-800 antialiased">
+
+    <!-- El resto del body (HTML y <script>) permanece idéntico -->
+
+    <div id="user-card" class="w-64 bg-white border border-slate-300 rounded-lg shadow-xl">
+        <div id="user-card-header" class="px-4 py-2 border-b font-bold text-white rounded-t-lg"></div>
+        <ul id="user-card-list" class="p-4 text-sm space-y-1"></ul>
+    </div>
+
+    <div class="w-full p-4 md:p-8">
+        
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Avance de Implementación SAP S/4HANA: Modelo Global Template</h1>
+        </header>
+
+        
+
+        <!-- Controles que aparecen después de cargar los datos -->
+        
+
+        <main id="main-content" class="space-y-16">
+            <section id="gantt-section" class="relative bg-white p-6 rounded-2xl shadow-xl border border-slate-200">
+                <h2 class="text-2xl font-bold mb-6 text-slate-900 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M3 6h18M3 18h18"></path></svg>Cronograma Ejecutivo de Rollout</h2>
+                <div id="gantt-chart" class="gantt-chart-container space-y-4 overflow-x-auto"><div class="flex sticky top-0 bg-slate-50 py-2 z-10 border-b border-slate-200"><div class="pr-4" style="width: 200px;"></div><div class="flex-grow flex relative"><div style="width: 9.887238723872386%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">sept '25</div><div style="width: 10.231023102310232%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">oct '25</div><div style="width: 9.900990099009901%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">nov '25</div><div style="width: 10.231023102310232%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">dic '25</div><div style="width: 10.231023102310232%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">ene '26</div><div style="width: 9.24092409240924%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">feb '26</div><div style="width: 10.231023102310232%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">mar '26</div><div style="width: 9.914741474147416%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">abr '26</div><div style="width: 10.231023102310232%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">may '26</div><div style="width: 9.900990099009901%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">jun '26</div></div></div><div class="relative">
+                    <div class="gantt-summary-bar cursor-pointer" data-society="PTM">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                PTM
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-green-200 text-green-800" style="left: 4.565456545654565%; width: 18.48184818481848%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-PTM" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="PJ Portland">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                PJ Portland
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-red-200 text-red-800" style="left: 23.047304730473048%; width: 29.042904290429046%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-PJ Portland" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Noviciado">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Noviciado
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-blue-200 text-blue-800" style="left: 23.047304730473048%; width: 29.042904290429046%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Noviciado" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Perez y Jacard">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Perez y Jacard
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-orange-200 text-orange-800" style="left: 23.047304730473048%; width: 29.042904290429046%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Perez y Jacard" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Perú">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Perú
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-purple-200 text-purple-800" style="left: 23.047304730473048%; width: 29.042904290429046%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Perú" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Colombia">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Colombia
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-red-200 text-red-800" style="left: 23.047304730473048%; width: 29.042904290429046%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Colombia" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Epoxa">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Epoxa
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-blue-100 text-blue-800" style="left: 62.321232123212326%; width: 30.033003300330037%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Epoxa" class="gantt-detail-container"></div>
+                    <div class="gantt-summary-bar cursor-pointer" data-society="Distribuidora Portland">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                Distribuidora Portland
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg bg-fuchsia-200 text-fuchsia-800" style="left: 62.321232123212326%; width: 30.033003300330037%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-Distribuidora Portland" class="gantt-detail-container"></div></div></div>
+                
+            </section>
+            <section id="global-template-section" class="relative bg-white p-6 rounded-2xl shadow-xl border border-slate-200">
+                <h2 class="text-2xl font-bold mb-6 text-slate-900 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547a2 2 0 00-.547 1.806l.477 2.387a6 6 0 00.517 3.86l.158.318a6 6 0 00.517 3.86l2.387.477a2 2 0 001.806-.547a2 2 0 00.547-1.806l-.477-2.387a6 6 0 00-.517-3.86l-.158-.318a6 6 0 01-.517-3.86l-2.387-.477a2 2 0 01-.547-1.806zM15 9.75a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>Track Global: Definiciones Centrales</h2>
+                <div id="global-definitions" class="space-y-8"><div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">1.- Estructura y Modelo</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="global-ORG_STRUCTURE" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="ORG_STRUCTURE">
+                            <h4 class="font-bold text-indigo-700">Estructura Organizativa</h4>
+                            <p class="text-sm text-slate-600 mt-1">Define el Diseño Legal (Sociedades), Logístico (Centros, Almacenes) y Comercial (Org. Ventas/Compras) de la empresa en SAP.</p>
+                        </div>
+                    
+                        <div id="global-FINANCE" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="FINANCE">
+                            <h4 class="font-bold text-indigo-700">Plan de Cuentas y Multimoneda</h4>
+                            <p class="text-sm text-slate-600 mt-1">Estructura contable consolidada para todo el grupo, con una configuración multimoneda que define la moneda local (CLP, PEN, COP) y una moneda funcional común (USD).</p>
+                        </div>
+                    </div></div><div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">2.- Datos Maestros</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="global-MASTER_DATA" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="MASTER_DATA">
+                            <h4 class="font-bold text-indigo-700">Datos Maestros (Materiales)</h4>
+                            <p class="text-sm text-slate-600 mt-1">Definición de materiales.Se busca minimizar la proliferacion de SKUs para un mismo material, gestionando la variabilidad (origen, formato) con lotes y unidades de medida alternativas.</p>
+                        </div>
+                    
+                        <div id="global-SPLIT_VALUATION" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="SPLIT_VALUATION">
+                            <h4 class="font-bold text-indigo-700">Valoración Separada</h4>
+                            <p class="text-sm text-slate-600 mt-1">Permite que un mismo SKU tenga costos diferentes en inventario según su origen o tipo de compra (ej. Importado vs. Nacional), utilizando Clases de Valoración.</p>
+                        </div>
+                    </div></div><div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">3.- Compras (P2P)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="global-P2P_FLOW" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="P2P_FLOW">
+                            <h4 class="font-bold text-indigo-700">Flujos de Compra</h4>
+                            <p class="text-sm text-slate-600 mt-1">Define los tipos de Pedido de Compra y sus flujos asociados, desde la solicitud hasta el pago al proveedor.</p>
+                        </div>
+                    
+                        <div id="global-LANDED_COST" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="LANDED_COST">
+                            <h4 class="font-bold text-indigo-700">Costeo</h4>
+                            <p class="text-sm text-slate-600 mt-1">Esquema de cálculo para añadir costos de importación (fletes, seguros, aranceles, etc) al valor del inventario de forma automática en el Pedido de Compra.</p>
+                        </div>
+                    </div></div><div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">4.- Inventario</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="global-INVENTORY" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="INVENTORY">
+                            <h4 class="font-bold text-indigo-700">Gestion de Inventario / WMS</h4>
+                            <p class="text-sm text-slate-600 mt-1">Define la Gestión de Materiales al interior de las Bodegas (WMS)</p>
+                        </div>
+                    </div></div><div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">5.- Ventas (O2C)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div id="global-O2C_FLOW" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="O2C_FLOW">
+                            <h4 class="font-bold text-indigo-700">Flujos de Venta</h4>
+                            <p class="text-sm text-slate-600 mt-1">Define los tipos de Pedido de Venta para cada modelo de negocio (Distribución, Trading, Indent, ANSAC, Intercompany, Servicios).</p>
+                        </div>
+                    
+                        <div id="global-CREDIT_MGMT" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="CREDIT_MGMT">
+                            <h4 class="font-bold text-indigo-700">Gestión de Crédito y Cobranza</h4>
+                            <p class="text-sm text-slate-600 mt-1">Proceso de control de riesgo que define límites de crédito por cliente y reglas de bloqueo automático de pedidos que exceden dicho límite.</p>
+                        </div>
+                    </div></div></div>
+                
+            </section>
+            <section id="details-panel-container" class="details-panel"><div id="details-content" class="bg-sky-50 p-6 rounded-lg border border-sky-200"></div></section>
+            <section id="silos-section" class="relative bg-white p-6 rounded-2xl shadow-xl border border-slate-200" style="padding-bottom: 4rem !important;">
+                <h2 class="text-2xl font-bold mb-6 text-slate-900 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>Avance Capacitacion por Sociedad</h2>
+                <div id="silos-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">PTM</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component partially-defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component partially-defined p-2 rounded text-xs text-center font-medium" data-silo-key="PTM" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">PJ Portland</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="PJPortland" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Noviciado</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Noviciado" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Perez y Jacard</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component not-applicable p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Perez_y_Jacard" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Portland Perú</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Peru" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Portland Colombia</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Colombia" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Epoxa</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Epoxa" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div><div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">Distribuidora Portland</h3>
+                            <div class="space-y-2 flex-grow">
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="ORG_STRUCTURE">
+                                Estructura Organizativa
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="FINANCE">
+                                Plan de Cuentas y Multimoneda
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="MASTER_DATA">
+                                Datos Maestros (Materiales)
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="SPLIT_VALUATION">
+                                Valoración Separada
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="P2P_FLOW">
+                                Flujos de Compra
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="LANDED_COST">
+                                Costeo
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="INVENTORY">
+                                Gestion de Inventario / WMS
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="O2C_FLOW">
+                                Flujos de Venta
+                            </div>
+                        
+                            <div class="silo-component pending p-2 rounded text-xs text-center font-medium" data-silo-key="Distribuidora_Portland" data-comp-key="CREDIT_MGMT">
+                                Gestión de Crédito y Cobranza
+                            </div>
+                        </div></div></div>
+                
+            <div class="legend-container mt-8 flex flex-wrap justify-center items-center gap-x-6 gap-y-3">
+            <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded bg-emerald-600"></span>
+                <span class="text-sm text-slate-600 font-medium">Definición Aprobada</span>
+            </div>
+        
+            <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded bg-amber-500"></span>
+                <span class="text-sm text-slate-600 font-medium">Definición Propuesta</span>
+            </div>
+        
+            <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded bg-slate-200 border border-slate-300"></span>
+                <span class="text-sm text-slate-600 font-medium">Pendiente de Definir</span>
+            </div>
+        
+            <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded bg-white border border-gray-300"></span>
+                <span class="text-sm text-slate-600 font-medium">No Aplica</span>
+            </div>
+        </div></section>
+            <section id="key-users-section" class="relative bg-white p-6 rounded-2xl shadow-xl border border-slate-200">
+                <h2 class="text-2xl font-bold mb-6 text-slate-900 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-3 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>Matriz de Capacitación por Area/Sociedad</h2>
+                <div id="key-user-matrix" class="overflow-x-auto relative"><table class="w-full text-sm text-left text-slate-500 border-collapse"><thead class="text-xs text-slate-700 uppercase bg-slate-100"><tr><th scope="col" class="px-6 py-3 border border-slate-200 sticky left-0 bg-slate-100 z-10 w-1/4">Definición Global</th><th scope="col" class="px-6 py-3 border border-slate-200">Validación General</th><th scope="col" class="px-6 py-3 border border-slate-200">PTM</th><th scope="col" class="px-6 py-3 border border-slate-200">PJ Portland</th><th scope="col" class="px-6 py-3 border border-slate-200">Noviciado</th><th scope="col" class="px-6 py-3 border border-slate-200">Perez y Jacard</th><th scope="col" class="px-6 py-3 border border-slate-200">Perú</th><th scope="col" class="px-6 py-3 border border-slate-200">Colombia</th><th scope="col" class="px-6 py-3 border border-slate-200">Epoxa</th><th scope="col" class="px-6 py-3 border border-slate-200">Dist. Portland</th></tr></thead><tbody><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Estructura Organizativa</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_fin">KUs: Finanzas y Contabilidad Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_ops">KUs: Operaciones Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_fin">KUs: Finanzas y Contabilidad Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_com">KUs: Comercial Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Plan de Cuentas y Multimoneda</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-100 text-green-800" data-area-key="ku_ptm_cnt">KUs: Contabilidad PTM</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_fin">KUs: Finanzas y Contabilidad Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_fin">KUs: Finanzas y Contabilidad Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Datos Maestros (Materiales)</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_com">KUs: Comercial Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_com">KUs: Comercial Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_epx_com">KUs: Comercial EPOXA</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_comercial">KUs: Comercial</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Valoración Separada</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_fin">KUs: Finanzas y Contabilidad Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_com">KUs: Comercial Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_fin">KUs: Finanzas y Contabilidad Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_com">KUs: Comercial Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Flujos de Compra</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-blue-200 text-blue-800" data-area-key="ku_ptm_cyc">KU: Facturacion y Lider PTM</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_ptm_op">KU: Operaciones PTM</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_ptm_cmx">KUs: Comex PTM</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_com">KUs: Comercial Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_ops">KUs: Operaciones Perú</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_com">KUs: Comercial Colombia</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_col_ops">KUs: Operaciones Colombia</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_epx_com">KUs: Comercial EPOXA</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_comercial">KUs: Comercial</span><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Costeo</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_fin">KUs: Finanzas y Contabilidad Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_fin">KUs: Finanzas y Contabilidad Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-cyan-100 text-cyan-800" data-area-key="ku_comex">KUs: COMEX</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Gestion de Inventario / WMS</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_ptm_op">KU: Operaciones PTM</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_ops">KUs: Operaciones Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_col_ops">KUs: Operaciones Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Flujos de Venta</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-orange-200 text-orange-800" data-area-key="lider_ops">Operaciones y Logística</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-blue-200 text-blue-800" data-area-key="ku_ptm_cyc">KU: Facturacion y Lider PTM</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_ptm_op">KU: Operaciones PTM</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-sky-100 text-sky-800" data-area-key="ku_adm_ventas">KUs: Adm. Ventas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_com">KUs: Comercial Perú</span><span class="area-pill bg-purple-100 text-purple-800" data-area-key="ku_peru_ops">KUs: Operaciones Perú</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-fuchsia-100 text-fuchsia-800" data-area-key="ku_col_com">KUs: Comercial Colombia</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_col_ops">KUs: Operaciones Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_epx_com">KUs: Comercial EPOXA</span><span class="area-pill bg-sky-100 text-sky-800" data-area-key="ku_adm_ventas">KUs: Adm. Ventas</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-blue-200 text-blue-800" data-area-key="lider_com">Negocios y Ventas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-100 text-blue-800" data-area-key="ku_comercial">KUs: Comercial</span><span class="area-pill bg-sky-100 text-sky-800" data-area-key="ku_adm_ventas">KUs: Adm. Ventas</span><span class="area-pill bg-orange-100 text-orange-800" data-area-key="ku_operaciones">KUs: Operaciones</span></td></tr><tr class="bg-white hover:bg-slate-50"><th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">Gestión de Crédito y Cobranza</th><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-green-200 text-green-800" data-area-key="lider_fin">Finanzas y Contabilidad</span><span class="area-pill bg-blue-200 text-blue-800" data-area-key="ku_ptm_cyc">KU: Facturacion y Lider PTM</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-gray-100 text-gray-500">N/A</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span><span class="area-pill bg-red-100 text-red-800" data-area-key="ku_credito">KUs: Crédito y Cobranzas</span><span class="area-pill bg-green-200 text-green-800" data-area-key="ku_finanzas">KUs: Finanzas y Contabilidad</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span><span class="area-pill bg-purple-200 text-purple-800" data-area-key="lider_peru">Gerencia Perú</span><span class="area-pill bg-red-100 text-red-800" data-area-key="ku_peru_cyc">KUs: Cobranzas_Peru</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span><span class="area-pill bg-fuchsia-200 text-fuchsia-800" data-area-key="lider_col">Gerencia Colombia</span><span class="area-pill bg-red-100 text-red-800" data-area-key="ku_col_cyc">KUs: Cobranzas_Colombia</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span><span class="area-pill bg-red-100 text-red-800" data-area-key="ku_credito">KUs: Crédito y Cobranzas</span></td><td class="px-4 py-2 border border-slate-200 align-top"><span class="area-pill bg-red-200 text-red-800" data-area-key="lider_credito">Administración y Finanzas</span><span class="area-pill bg-red-100 text-red-800" data-area-key="ku_credito">KUs: Crédito y Cobranzas</span></td></tr></tbody></table></div>
+                
+            </section>
+        </main>
+    </div>
+
+    <script>
+                    // Datos incrustados para la versión estática
+                    const globalDefinitionsData = JSON.parse('{"ORG_STRUCTURE":{"title":"Estructura Organizativa","description":"Define el Diseño Legal (Sociedades), Logístico (Centros, Almacenes) y Comercial (Org. Ventas/Compras) de la empresa en SAP.","details":"Es la base para todas las transacciones. Cada país tiene sus propias sociedades y estructuras, pero operan bajo un modelo de gestión centralizado."},"FINANCE":{"title":"Plan de Cuentas y Multimoneda","description":"Estructura contable consolidada para todo el grupo, con una configuración multimoneda que define la moneda local (CLP, PEN, COP) y una moneda funcional común (USD).","details":"Permite una reportería financiera integrada. La Multimoneda permite separar la gestión del Negocio de la gestión financiera-contable."},"MASTER_DATA":{"title":"Datos Maestros (Materiales)","description":"Definición de materiales.Se busca minimizar la proliferacion de SKUs para un mismo material, gestionando la variabilidad (origen, formato) con lotes y unidades de medida alternativas.","details":"Mejora la precisión en compras, ventas y valorización contable.Simplifica la integración entre áreas como COMEX, operaciones y comercial. Optimiza la toma de decisiones estratégicas en cada línea de negocio."},"SPLIT_VALUATION":{"title":"Valoración Separada","description":"Permite que un mismo SKU tenga costos diferentes en inventario según su origen o tipo de compra (ej. Importado vs. Nacional), utilizando Clases de Valoración.","details":"Habilita una gestión contable más precisa y alineada con la realidad operativa de cada división comercial, ya que el inventario refleja el costo real asociado a cada flujo logístico. Además, facilita el análisis de rentabilidad por canal."},"P2P_FLOW":{"title":"Flujos de Compra","description":"Define los tipos de Pedido de Compra y sus flujos asociados, desde la solicitud hasta el pago al proveedor.","details":"Estandariza los procesos de compra para los escenarios de Distribución, Trading, Indent/ANSAC y consumo."},"LANDED_COST":{"title":"Costeo","description":"Esquema de cálculo para añadir costos de importación (fletes, seguros, aranceles, etc) al valor del inventario de forma automática en el Pedido de Compra.","details":"Elimina el pre-costeo manual en Excel, proporcionando un costo proyectado real del producto en USD desde el inicio del proceso."},"INVENTORY":{"title":"Gestion de Inventario / WMS","description":"Define la Gestión de Materiales al interior de las Bodegas (WMS)","details":""},"O2C_FLOW":{"title":"Flujos de Venta","description":"Define los tipos de Pedido de Venta para cada modelo de negocio (Distribución, Trading, Indent, ANSAC, Intercompany, Servicios).","details":"Asegura que cada venta se procese con la lógica correcta de entrega, facturación y contabilización."},"CREDIT_MGMT":{"title":"Gestión de Crédito y Cobranza","description":"Proceso de control de riesgo que define límites de crédito por cliente y reglas de bloqueo automático de pedidos que exceden dicho límite.","details":"Protege el flujo de caja de la compañía a través de un control proactivo y sistémico del riesgo comercial."}}');
+                    const companySilosData = JSON.parse('{"PTM":{"name":"PTM","components":{"ORG_STRUCTURE":{"status":"defined","details":"Tendrá 2 Centros Logisticos: Uno para gestionar Materiales no Valorados (Negocio ANSAC) y otro para gestionar negocios Trading"},"FINANCE":{"status":"defined","details":"Utiliza el plan de cuentas global y la configuración multimoneda estándar."},"MASTER_DATA":{"status":"defined","details":"Gestionará  materiales no valorados para el negocio ANSAC. Gestionar materiales con valorización para negocios Trading."},"P2P_FLOW":{"status":"defined","details":"Considera Flujo de Compra Indent Especial (ANSAC) y Flujo de Compra Trading"},"SPLIT_VALUATION":{"status":"defined","details":"No aplica para pedidos ANSAC"},"LANDED_COST":{"status":"defined","details":"Aplica sólo para pedidos Trading"},"O2C_FLOW":{"status":"partially-defined","details":"Considera Flujo de Venta de Servicios y Flujo de Venta Trading"},"INVENTORY":{"status":"defined","details":""},"CREDIT_MGMT":{"status":"partially-defined","details":"Aplica para ventas Trading"}}},"Peru":{"name":"Portland Perú","components":{"ORG_STRUCTURE":{"status":"pending","details":"Estructura completa definida para la operación en Perú, incluyendo su propia Org. de Compras y Ventas."},"FINANCE":{"status":"pending","details":"Utiliza el plan de cuentas global con adaptaciones para la localización fiscal de Perú (impuestos IGV, etc.)."},"MASTER_DATA":{"status":"pending","details":"Consume el catálogo de materiales del Global Template."},"P2P_FLOW":{"status":"pending","details":"Foco en <b>Pedido de Importación (ZIM)</b> y <b>Trading (ZTR)</b> para abastecer a sus clientes."},"SPLIT_VALUATION":{"status":"pending","details":"Se activará la Valoración Separada para importaciones y compra nacional"},"LANDED_COST":{"status":"pending","details":"Esquema de Landed Cost adaptado a la estructura de importación de Perú."},"O2C_FLOW":{"status":"pending","details":"Implementará el flujo de <b>Trading (TAS)</b> y <b>Distribución (OR)</b> con facturación local."},"INVENTORY":{"status":"pending","details":"Se replicará la estrategia de negociación individual para el mercado peruano."},"CREDIT_MGMT":{"status":"pending","details":"Se aplicará la política de crédito corporativa con gestión local."}}},"Colombia":{"name":"Portland Colombia","components":{"ORG_STRUCTURE":{"status":"pending","details":"Estructura completa definida para la operación en Colombia."},"FINANCE":{"status":"pending","details":"Utiliza el plan de cuentas global con adaptaciones para la localización fiscal de Colombia (IVA, ReteFuente)."},"MASTER_DATA":{"status":"pending","details":"Consume el catálogo de materiales del Global Template."},"P2P_FLOW":{"status":"pending","details":"Pendiente de definición detallada. Se enfocará en <b>Importación (ZIM)</b> y <b>Trading (ZTR)</b>."},"SPLIT_VALUATION":{"status":"pending","details":"Se activará la Valoración Separada para las importaciones."},"LANDED_COST":{"status":"pending","details":"Pendiente de configurar con las especificidades de la aduana colombiana."},"O2C_FLOW":{"status":"pending","details":"Pendiente de definición detallada. Se enfocará en los flujos de <b>Trading (TAS)</b> y <b>Distribución (OR)</b>."},"INVENTORY":{"status":"pending","details":"Pendiente de definir la estrategia de precios para el mercado colombiano."},"CREDIT_MGMT":{"status":"pending","details":"Pendiente de implementar la política de crédito."}}},"Distribuidora_Portland":{"name":"Distribuidora Portland","components":{"ORG_STRUCTURE":{"status":"pending","details":"Es la principal sociedad operativa en Chile, con múltiples Centros (La Granja, San Antonio) y Almacenes."},"FINANCE":{"status":"pending","details":"Utiliza el plan de cuentas global y la configuración multimoneda estándar."},"MASTER_DATA":{"status":"pending","details":"Será el dueño principal del catálogo de materiales bajo la estrategia de SKU Único."},"P2P_FLOW":{"status":"pending","details":"Utilizará el <b>Pedido Estándar Nacional (ZNB)</b> y el de <b>Importación (ZIM)</b>."},"SPLIT_VALUATION":{"status":"pending","details":"Se activará la Valoración Separada para diferenciar costos de stock Importado vs. Nacional."},"LANDED_COST":{"status":"pending","details":"Implementación completa del esquema de Landed Cost para todas las importaciones."},"O2C_FLOW":{"status":"pending","details":"Implementará todos los flujos de venta: <b>Distribución (OR)</b>, <b>Trading (TAS)</b> y <b>Venta a Filiales (IC)</b>."},"INVENTORY":{"status":"pending","details":"Se gestionarán todas las condiciones de precio por cliente y material."},"CREDIT_MGMT":{"status":"pending","details":"Se implementará el flujo completo de gestión de crédito y límites."}}},"Perez_y_Jacard":{"name":"Perez y Jacard","components":{"ORG_STRUCTURE":{"status":"pending","details":""},"FINANCE":{"status":"pending","details":""},"MASTER_DATA":{"status":"not-applicable","details":""},"P2P_FLOW":{"status":"pending","details":""},"SPLIT_VALUATION":{"status":"not-applicable","details":""},"LANDED_COST":{"status":"not-applicable","details":""},"O2C_FLOW":{"status":"pending","details":""},"INVENTORY":{"status":"not-applicable","details":""},"CREDIT_MGMT":{"status":"pending","details":""}}},"Noviciado":{"name":"Noviciado","components":{"ORG_STRUCTURE":{"status":"pending","details":""},"FINANCE":{"status":"pending","details":""},"MASTER_DATA":{"status":"not-applicable","details":""},"P2P_FLOW":{"status":"not-applicable","details":""},"SPLIT_VALUATION":{"status":"not-applicable","details":""},"LANDED_COST":{"status":"not-applicable","details":""},"O2C_FLOW":{"status":"not-applicable","details":""},"INVENTORY":{"status":"not-applicable","details":""},"CREDIT_MGMT":{"status":"not-applicable","details":""}}},"PJPortland":{"name":"PJ Portland","components":{"ORG_STRUCTURE":{"status":"pending","details":""},"FINANCE":{"status":"pending","details":""},"MASTER_DATA":{"status":"not-applicable","details":""},"P2P_FLOW":{"status":"not-applicable","details":""},"SPLIT_VALUATION":{"status":"not-applicable","details":""},"LANDED_COST":{"status":"not-applicable","details":""},"O2C_FLOW":{"status":"not-applicable","details":""},"INVENTORY":{"status":"not-applicable","details":""},"CREDIT_MGMT":{"status":"not-applicable","details":""}}},"Epoxa":{"name":"Epoxa","components":{"ORG_STRUCTURE":{"status":"pending","details":""},"FINANCE":{"status":"pending","details":""},"MASTER_DATA":{"status":"pending","details":""},"P2P_FLOW":{"status":"pending","details":""},"SPLIT_VALUATION":{"status":"pending","details":""},"LANDED_COST":{"status":"pending","details":""},"O2C_FLOW":{"status":"pending","details":""},"INVENTORY":{"status":"pending","details":""},"CREDIT_MGMT":{"status":"pending","details":""}}}}');
+                    const workshopGrouping = JSON.parse('{"1.- Estructura y Modelo":["ORG_STRUCTURE","FINANCE"],"2.- Datos Maestros":["MASTER_DATA","SPLIT_VALUATION"],"3.- Compras (P2P)":["P2P_FLOW","LANDED_COST"],"4.- Inventario":["INVENTORY"],"5.- Ventas (O2C)":["O2C_FLOW","PRICING","CREDIT_MGMT"]}');
+                    const ganttDataBySociety = JSON.parse('{"PTM":[{"name":"Configuraciones","start":"15-09-2025","end":"20-10-2025","color":"bg-green-200 text-green-800"},{"name":"Capacitacion","start":"13-10-2025","end":"01-11-2025","color":"bg-green-200 text-green-800"},{"name":"Pruebas y Validación de Usuarios","start":"27-10-2025","end":"01-11-2025","color":"bg-green-200 text-green-800"},{"name":"Go/No-Go","start":"01-11-2025","end":"01-11-2025","color":"bg-green-200 text-green-800"},{"name":"Go-Live","start":"03-11-2025","end":"03-11-2025","color":"bg-green-200 text-green-800"},{"name":"Acompañamiento 1er Cierre","start":"03-11-2025","end":"10-11-2025","color":"bg-green-200 text-green-800"}],"PJ Portland":[{"name":"Validacion y Capacitacion","start":"10-11-2025","end":"01-12-2025","color":"bg-red-200 text-red-800"},{"name":"Pruebas","start":"01-12-2025","end":"09-01-2026","color":"bg-red-200 text-red-800"},{"name":"Go/No-Go","start":"09-01-2026","end":"09-01-2026","color":"bg-red-200 text-red-800"},{"name":"Go-Live","start":"12-01-2026","end":"12-01-2026","color":"bg-red-200 text-red-800"},{"name":"Acompañamiento 1er Cierre","start":"12-01-2026","end":"06-02-2026","color":"bg-red-200 text-red-800"}],"Noviciado":[{"name":"Validacion y Capacitacion","start":"10-11-2025","end":"01-12-2025","color":"bg-blue-200 text-blue-800"},{"name":"Pruebas","start":"01-12-2025","end":"09-01-2026","color":"bg-blue-200 text-blue-800"},{"name":"Go/No-Go","start":"09-01-2026","end":"09-01-2026","color":"bg-blue-200 text-blue-800"},{"name":"Go-Live","start":"12-01-2026","end":"12-01-2026","color":"bg-blue-200 text-blue-800"},{"name":"Acompañamiento 1er Cierre","start":"12-01-2026","end":"06-02-2026","color":"bg-blue-200 text-blue-800"}],"Perez y Jacard":[{"name":"Validacion y Capacitacion","start":"10-11-2025","end":"01-12-2025","color":"bg-orange-200 text-orange-800"},{"name":"Pruebas","start":"01-12-2025","end":"09-01-2026","color":"bg-orange-200 text-orange-800"},{"name":"Go/No-Go","start":"09-01-2026","end":"09-01-2026","color":"bg-orange-200 text-orange-800"},{"name":"Go-Live","start":"12-01-2026","end":"12-01-2026","color":"bg-orange-200 text-orange-800"},{"name":"Acompañamiento 1er Cierre","start":"12-01-2026","end":"06-02-2026","color":"bg-orange-200 text-orange-800"}],"Perú":[{"name":"Validacion y Capacitacion","start":"10-11-2025","end":"12-12-2025","color":"bg-purple-200 text-purple-800"},{"name":"Pruebas","start":"15-12-2025","end":"30-12-2025","color":"bg-purple-200 text-purple-800"},{"name":"Go/No-Go","start":"03-01-2026","end":"03-01-2026","color":"bg-purple-200 text-purple-800"},{"name":"Go-Live","start":"05-01-2026","end":"05-01-2026","color":"bg-purple-200 text-purple-800"},{"name":"Acompañamiento 1er Cierre","start":"05-01-2026","end":"06-02-2026","color":"bg-purple-200 text-purple-800"}],"Colombia":[{"name":"Validacion y Capacitacion","start":"10-11-2025","end":"12-12-2025","color":"bg-red-200 text-red-800"},{"name":"Pruebas","start":"15-12-2025","end":"15-01-2026","color":"bg-red-200 text-red-800"},{"name":"Go/No-Go","start":"16-01-2026","end":"16-01-2026","color":"bg-red-200 text-red-800"},{"name":"Go-Live","start":"19-01-2026","end":"19-01-2026","color":"bg-red-200 text-red-800"},{"name":"Acompañamiento 1er Cierre","start":"19-01-2026","end":"06-02-2026","color":"bg-red-200 text-red-800"}],"Epoxa":[{"name":"Validacion y Capacitacion","start":"09-03-2026","end":"06-04-2026","color":"bg-blue-100 text-blue-800"},{"name":"Pruebas","start":"06-04-2026","end":"02-05-2026","color":"bg-sky-100 text-sky-800"},{"name":"Go/No-Go","start":"02-05-2026","end":"02-05-2026","color":"bg-sky-100 text-sky-800"},{"name":"Go-Live","start":"04-05-2026","end":"04-05-2026","color":"bg-sky-100 text-sky-800"},{"name":"Acompañamiento 1er Cierre","start":"04-05-2026","end":"08-06-2026","color":"bg-sky-100 text-sky-800"}],"Distribuidora Portland":[{"name":"Validacion y Capacitacion","start":"09-03-2026","end":"06-04-2026","color":"bg-fuchsia-200 text-fuchsia-800"},{"name":"Pruebas","start":"06-04-2026","end":"02-05-2026","color":"bg-fuchsia-200 text-fuchsia-800"},{"name":"Go/No-Go","start":"02-05-2026","end":"02-05-2026","color":"bg-fuchsia-200 text-fuchsia-800"},{"name":"Go-Live","start":"04-05-2026","end":"04-05-2026","color":"bg-fuchsia-200 text-fuchsia-800"},{"name":"Acompañamiento 1er Cierre","start":"04-05-2026","end":"08-06-2026","color":"bg-fuchsia-200 text-fuchsia-800"}]}');
+                    const keyUsersByArea = JSON.parse('{"lider_fin":{"name":"Finanzas y Contabilidad","leader":"Daniela Correa","users":null,"color":"bg-green-200 text-green-800","headerColor":"bg-green-600"},"lider_credito":{"name":"Administración y Finanzas","leader":"German Faundes","users":null,"color":"bg-red-200 text-red-800","headerColor":"bg-red-600"},"lider_com":{"name":"Negocios y Ventas","leader":"Andrés Jacard","users":null,"color":"bg-blue-200 text-blue-800","headerColor":"bg-blue-600"},"lider_ops":{"name":"Operaciones y Logística","leader":"Anthony Fyfe","users":null,"color":"bg-orange-200 text-orange-800","headerColor":"bg-orange-600"},"lider_peru":{"name":"Gerencia Perú","leader":"Juan Molero","users":null,"color":"bg-purple-200 text-purple-800","headerColor":"bg-purple-600"},"lider_col":{"name":"Gerencia Colombia","leader":"Juliana Gómez","users":null,"color":"bg-fuchsia-200 text-fuchsia-800","headerColor":"bg-fuchsia-600"},"ku_comercial":{"name":"KUs: Comercial","leader":null,"users":["Pamela López(call center)","Jorge Contreras (Alimentos)"," Valentina Bravo (Alimentos)","Marianne Thomas(Alimentos)","Macarena Vega(Alimentos)"," Loreto Piña (Plasticos)"," Alberto Perez(Coating)"," Carolina Aedo (Coating)"," Roberto Gomez (Farma)"," Miguel Cortez (Farma)"," Francisco Vargas (Poliuretanos)","Paulo Leon (Mineria)"," Guillermo Vargas (Mineria)"," Alejandro Kahn (Quimicos)"," Loreto Gamboa (Quimicos)"," Alejandra Macan (Quimicos)"," Roberto Pupkin (Quimicos)"],"color":"bg-blue-100 text-blue-800","headerColor":"bg-blue-500"},"ku_operaciones":{"name":"KUs: Operaciones","leader":null,"users":["Manuel González","Priscila Reyes","Katherine Sepúlveda","Lucas Torres","Santiago Manriquez (Inventario)","Alejandra Muñoz (Facturacion LGA)"," Sandra Ugarte (Facturación PSA)"],"color":"bg-orange-100 text-orange-800","headerColor":"bg-orange-500"},"ku_comex":{"name":"KUs: COMEX","leader":null,"users":["Carolina Beard","Ana María Oyarce","Tamara Millán","Ana Maria Soto","Daniel Cruces","Felipe Vidal"],"color":"bg-cyan-100 text-cyan-800","headerColor":"bg-cyan-500"},"ku_adm_ventas":{"name":"KUs: Adm. Ventas","leader":null,"users":["Roberto Escobar","Jonathan Muñoz"],"color":"bg-sky-100 text-sky-800","headerColor":"bg-sky-500"},"ku_credito":{"name":"KUs: Crédito y Cobranzas","leader":null,"users":["Alejandra Sanz","Nicole Espinoza","Carolina Baeza(Facturacion)"," Cristina Pezo"],"color":"bg-red-100 text-red-800","headerColor":"bg-red-500"},"ku_finanzas":{"name":"KUs: Finanzas y Contabilidad","leader":null,"users":["Gisella Barra","Hugo Riveros","Fernanda San Martín","Henry Alas"],"color":"bg-green-200 text-green-800","headerColor":"bg-green-600"},"ku_ctrl_gestion":{"name":"KUs: Control de Gestión","leader":null,"users":["Carolina Bustamante","Alberto Garcés"],"color":"bg-lime-100 text-lime-800","headerColor":"bg-lime-500"},"ku_peru_fin":{"name":"KUs: Finanzas y Contabilidad Perú","leader":null,"users":["Patricia Arista(Jefa de Adm y Fin)","Carlos Cueto(Analista Contable))","Nadia Vega(Tesoreria)"],"color":"bg-purple-100 text-purple-800","headerColor":"bg-purple-500"},"ku_peru_com":{"name":"KUs: Comercial Perú","leader":null,"users":["Shiro Nemotto(Gte Comercial)"],"color":"bg-purple-100 text-purple-800","headerColor":"bg-purple-500"},"ku_peru_ops":{"name":"KUs: Operaciones Perú","leader":null,"users":["Daniel Flores(Logistica)","Carmen Garcia (Ordenes de Compra)"," Alonso Cuba(TI)"],"color":"bg-purple-100 text-purple-800","headerColor":"bg-purple-500"},"ku_peru_cyc":{"name":"KUs: Cobranzas_Peru","leader":null,"users":["Virginia Vazques (Facturacion y Cobranza)"],"color":"bg-red-100 text-red-800","headerColor":"bg-red-500"},"ku_col_fin":{"name":"KUs: Finanzas y Contabilidad Colombia","leader":null,"users":["Paola Ramírez(Jefa de Adm y Fin)"," Liliana Alvarado (Adm y Finanzas)",""],"color":"bg-fuchsia-100 text-fuchsia-800","headerColor":"bg-fuchsia-500"},"ku_col_com":{"name":"KUs: Comercial Colombia","leader":null,"users":["Santiago Saavedra"," Rafael Posada (Plasticos)"],"color":"bg-fuchsia-100 text-fuchsia-800","headerColor":"bg-fuchsia-500"},"ku_col_ops":{"name":"KUs: Operaciones Colombia","leader":null,"users":["Andrés García(Comex y Logistica)"," Liliana Alvarado (Ingreso Mercaderia)",""],"color":"bg-orange-100 text-orange-800","headerColor":"bg-orange-500"},"ku_col_cyc":{"name":"KUs: Cobranzas_Colombia","leader":null,"users":["Margareth Pérez (Credito y Cobranza)"],"color":"bg-red-100 text-red-800","headerColor":"bg-red-500"},"ku_ptm_cyc":{"name":"KU: Facturacion y Lider PTM","leader":null,"users":["Alejandra Sanz"],"color":"bg-blue-200 text-blue-800","headerColor":"bg-blue-600"},"ku_ptm_op":{"name":"KU: Operaciones PTM","leader":null,"users":["Romy Maldonado"],"color":"bg-orange-100 text-orange-800","headerColor":"bg-orange-500"},"ku_ptm_cnt":{"name":"KUs: Contabilidad PTM","leader":null,"users":["Hugo Riveros"," Luis Delgado"],"color":"bg-green-100 text-green-800","headerColor":"bg-green-500"},"ku_ptm_cmx":{"name":"KUs: Comex PTM","leader":null,"users":["Felipe Vidal"," Linda Valenzuela"],"color":"bg-cyan-100 text-cyan-800","headerColor":"bg-cyan-500"},"ku_epx_com":{"name":"KUs: Comercial EPOXA","leader":null,"users":["Alejandro Arancibia"," Patricio Abarca"],"color":"bg-blue-100 text-blue-800","headerColor":""}}');
+                    const keyUserValidationData = JSON.parse('{"ORG_STRUCTURE":{"Colombia":["lider_fin","lider_col","ku_col_fin","ku_col_com"],"Distribuidora_Portland":["lider_fin","ku_finanzas","ku_operaciones"],"General":["lider_fin","lider_ops"],"Peru":["lider_fin","lider_peru","ku_peru_fin","ku_peru_ops"],"PTM":["lider_fin","lider_com"],"Perez_y_Jacard":["lider_fin","ku_finanzas"],"Noviciado":["lider_fin","ku_finanzas"],"PJPortland":["lider_fin","ku_finanzas"],"Epoxa":["lider_fin","ku_finanzas","ku_operaciones"]},"FINANCE":{"Colombia":["lider_fin","lider_col","ku_col_fin"],"Distribuidora_Portland":["lider_fin","ku_finanzas"],"General":["lider_fin"],"Peru":["lider_fin","lider_peru","ku_peru_fin"],"PTM":["lider_fin","ku_ptm_cnt"],"Perez_y_Jacard":["lider_fin","ku_finanzas"],"Noviciado":["lider_fin","ku_finanzas"],"PJPortland":["lider_fin","ku_finanzas"],"Epoxa":["lider_fin","ku_finanzas"]},"MASTER_DATA":{"Colombia":["lider_com","lider_col","ku_col_com"],"Distribuidora_Portland":["lider_com","ku_comercial","ku_operaciones","ku_comex"],"General":["lider_com","lider_ops"],"Peru":["lider_com","lider_peru","ku_peru_com"],"PTM":["lider_com"],"Epoxa":["lider_com","ku_epx_com","ku_operaciones","ku_comex"]},"SPLIT_VALUATION":{"Colombia":["lider_fin","lider_col","ku_col_fin","ku_col_com"],"Distribuidora_Portland":["lider_fin","ku_finanzas","ku_comex"],"General":["lider_com","lider_fin"],"Peru":["lider_fin","lider_peru","ku_peru_fin","ku_peru_com"],"PTM":["lider_com","lider_fin"],"Epoxa":["lider_fin","ku_finanzas","ku_comex"]},"P2P_FLOW":{"Colombia":["lider_com","lider_col","lider_fin","ku_col_com","ku_col_ops","ku_comex"],"Distribuidora_Portland":["lider_com","lider_fin","ku_comercial","ku_comex","ku_operaciones"],"General":["lider_com","lider_ops","lider_fin"],"Peru":["lider_com","lider_peru","ku_peru_com","ku_peru_ops","ku_comex"],"PTM":["lider_com","ku_ptm_cyc","ku_ptm_op","ku_ptm_cmx"],"Perez_y_Jacard":["lider_fin","ku_comex"],"Epoxa":["lider_com","lider_fin","ku_epx_com","ku_comex","ku_operaciones"]},"LANDED_COST":{"Colombia":["lider_col","ku_col_fin"],"Distribuidora_Portland":["ku_comex","ku_finanzas"],"General":["lider_com","lider_fin"],"Peru":["lider_peru","ku_peru_fin"],"PTM":["lider_com"],"Epoxa":["ku_comex","ku_finanzas"]},"O2C_FLOW":{"Colombia":["lider_com","lider_col","lider_fin","ku_col_com","ku_col_ops"],"Distribuidora_Portland":["lider_com","lider_fin","ku_comercial","ku_adm_ventas","ku_operaciones"],"General":["lider_com","lider_ops","lider_fin"],"Peru":["lider_com","lider_peru","lider_fin","ku_peru_com","ku_peru_ops"],"PTM":["lider_com","ku_ptm_cyc","ku_ptm_op"],"Perez_y_Jacard":["lider_fin","ku_adm_ventas"],"Epoxa":["lider_com","lider_fin","ku_epx_com","ku_adm_ventas","ku_operaciones"]},"INVENTORY":{"Colombia":["lider_ops","lider_col","lider_fin","ku_col_ops"],"Distribuidora_Portland":["lider_ops","lider_fin","ku_operaciones"],"General":["lider_ops","lider_fin"],"Peru":["lider_ops","lider_peru","lider_fin","ku_peru_ops"],"PTM":["ku_ptm_op"],"Epoxa":["lider_ops","lider_fin","ku_operaciones"]},"CREDIT_MGMT":{"Colombia":["lider_credito","lider_col","ku_col_cyc"],"Distribuidora_Portland":["lider_credito","ku_credito"],"General":["lider_credito"],"Peru":["lider_credito","lider_peru","ku_peru_cyc"],"PTM":["lider_fin","ku_ptm_cyc"],"Perez_y_Jacard":["lider_credito","ku_credito","ku_finanzas"],"Epoxa":["lider_credito","ku_credito"]}}');
+
+                    // Asignar a window para compatibilidad con las funciones existentes
+                    Object.assign(window, { globalDefinitionsData, companySilosData, workshopGrouping, ganttDataBySociety, keyUsersByArea, keyUserValidationData });
+
+                    // Asegurarse de que el contenido principal sea visible
+                    document.getElementById('main-content').classList.remove('hidden');
+
+                    // Definiciones de funciones necesarias para el renderizado y la interactividad
+                    // El orden es importante: definir funciones individuales primero.
+                    // NOTA: setupSectionExport no se incluye aquí, ya que html2canvas no se inyecta en el estático.
+                    const parseDateDDMMYYYY = function parseDateDDMMYYYY(dateString) {
+        if (!dateString || typeof dateString !== 'string') return null;
+        const parts = dateString.split('-');
+        if (parts.length !== 3) return null; // Validación básica
+        // Reordena [DD, MM, YYYY] a [YYYY, MM, DD] y los une.
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    };
+                    const renderGlobalDefinitions = function() {
+        const container = document.getElementById('global-definitions');
+        container.classList.remove('content-placeholder');
+        let html = '';
+        for (const groupName in window.workshopGrouping) {
+            html += `<div class="mb-6">
+                        <h3 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-3">${groupName}</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
+            window.workshopGrouping[groupName].forEach(key => {
+                const item = window.globalDefinitionsData[key];
+                if (item) {
+                    html += `
+                        <div id="global-${key}" class="global-template-item bg-white p-4 rounded-lg shadow border border-slate-200" data-key="${key}">
+                            <h4 class="font-bold text-indigo-700">${item.title}</h4>
+                            <p class="text-sm text-slate-600 mt-1">${item.description}</p>
+                        </div>
+                    `;
+                }
+            });
+            html += `</div></div>`;
+        }
+        container.innerHTML = html;
+    };
+                    const renderSilos = function() {
+        const container = document.getElementById('silos-container');
+        container.classList.remove('content-placeholder');
+        let html = '';
+//        const siloOrder = ['PTM', 'Peru', 'Colombia', 'Distribuidora_Portland'];
+        const siloOrder = ['PTM' , 'PJPortland' , 'Noviciado' , 'Perez_y_Jacard' , 'Peru' , 'Colombia' , 'Epoxa' , 'Distribuidora_Portland'];
+        // --- Generación de las tarjetas de silos (sin cambios) ---
+        siloOrder.forEach(siloKey => {
+            const silo = window.companySilosData[siloKey];
+            if (silo) {
+                html += `<div class="bg-white p-5 rounded-xl shadow-lg border border-slate-200 flex flex-col">
+                            <h3 class="text-xl font-bold text-slate-800 mb-4 text-center">${silo.name}</h3>
+                            <div class="space-y-2 flex-grow">`;
+                
+                const componentOrder = Object.values(window.workshopGrouping).flat();
+                
+                componentOrder.forEach(compKey => {
+                    if (silo.components[compKey]) {
+                        const component = silo.components[compKey];
+                        const statusClass = component.status; // Corregido en el paso anterior
+                        const title = window.globalDefinitionsData[compKey].title;
+                        html += `
+                            <div class="silo-component ${statusClass} p-2 rounded text-xs text-center font-medium" data-silo-key="${siloKey}" data-comp-key="${compKey}">
+                                ${title}
+                            </div>
+                        `;
+                    }
+                });
+                html += `</div></div>`;
+            }
+        });
+        container.innerHTML = html;
+
+        // --- INICIO: CÓDIGO PARA AÑADIR LEYENDA ---
+        const section = document.getElementById('silos-section');
+        
+        // Evitar duplicar la leyenda si la función se llama de nuevo
+        if (section.querySelector('.legend-container')) {
+            return;
+        }
+
+        const legendContainer = document.createElement('div');
+        legendContainer.className = 'legend-container mt-8 flex flex-wrap justify-center items-center gap-x-6 gap-y-3';
+        
+        const legendItems = [
+            { label: 'Definición Aprobada', cssClass: 'bg-emerald-600' },
+            { label: 'Definición Propuesta', cssClass: 'bg-amber-500' },
+            { label: 'Pendiente de Definir', cssClass: 'bg-slate-200 border border-slate-300' },
+            { label: 'No Aplica', cssClass: 'bg-white border border-gray-300' }
+        ];
+
+        legendContainer.innerHTML = legendItems.map(item => `
+            <div class="flex items-center space-x-2">
+                <span class="w-4 h-4 rounded ${item.cssClass}"></span>
+                <span class="text-sm text-slate-600 font-medium">${item.label}</span>
+            </div>
+        `).join('');
+
+        section.appendChild(legendContainer);
+        // --- FIN: CÓDIGO PARA AÑADIR LEYENDA ---
+    };
+                    const renderGanttChart = function() {
+        const container = document.getElementById('gantt-chart');
+        if (!container) return;
+        container.classList.remove('content-placeholder');
+        
+        const overallStart = new Date('2025-09-01T00:00:00');
+        const overallEnd = new Date('2026-07-01T00:00:00');
+        const totalDuration = overallEnd.getTime() - overallStart.getTime();
+
+        // --- Render Month Headers ---
+        let monthHeadersHTML = '<div class="flex sticky top-0 bg-slate-50 py-2 z-10 border-b border-slate-200"><div class="pr-4" style="width: 200px;"></div><div class="flex-grow flex relative">';
+        const months = [];
+        let currentDate = new Date(overallStart);
+        while (currentDate < overallEnd) {
+            months.push(new Date(currentDate));
+            currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+
+        months.forEach(month => {
+            const monthStart = month;
+            const nextMonth = new Date(month);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            const monthEnd = new Date(Math.min(nextMonth.getTime(), overallEnd.getTime()));
+            const width = ((monthEnd.getTime() - monthStart.getTime()) / totalDuration) * 100;
+            const monthName = month.toLocaleString('es-ES', { month: 'short' });
+            const year = month.getFullYear().toString().slice(-2);
+            monthHeadersHTML += `<div style="width: ${width}%" class="text-center text-xs text-slate-500 font-semibold border-l border-slate-200 min-w-[50px]">${monthName} '${year}</div>`;
+        });
+        monthHeadersHTML += '</div></div>';
+
+        // --- Render Summary Bars for each Society ---
+        let summaryBarsHTML = '<div class="relative">';
+        for (const society in window.ganttDataBySociety) {
+            const activities = window.ganttDataBySociety[society];
+            if (activities.length === 0) continue;
+
+            const dates = activities.map(a => [new Date(parseDateDDMMYYYY(a.start)), new Date(parseDateDDMMYYYY(a.end))]).flat();
+            const minDate = new Date(Math.min.apply(null, dates));
+            const maxDate = new Date(Math.max.apply(null, dates));
+
+            const offset = ((minDate.getTime() - overallStart.getTime()) / totalDuration) * 100;
+            const width = ((maxDate.getTime() - minDate.getTime()) / totalDuration) * 100;
+            
+            const societyColor = activities[0]?.color || 'bg-gray-500';
+
+            if (width > 0 && offset >= 0) {
+                summaryBarsHTML += `
+                    <div class="gantt-summary-bar cursor-pointer" data-society="${society}">
+                        <div class="flex items-center mb-1 h-10">
+                            <div class="pr-4 text-sm font-bold text-right text-slate-800 flex items-center justify-end shrink-0" style="width: 200px;">
+                                ${society}
+                                <svg class="w-4 h-4 ml-2 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </div>
+                            <div class="flex-grow h-full relative">
+                                <div class="absolute h-full rounded-lg ${societyColor}" style="left: ${offset}%; width: ${width}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gantt-detail-${society}" class="gantt-detail-container"></div>`;
+            }
+        }
+        summaryBarsHTML += '</div>';
+
+        container.innerHTML = monthHeadersHTML + summaryBarsHTML;
+    };
+                    const renderKeyUserMatrix = function() {
+        const container = document.getElementById('key-user-matrix');
+        if (!container) return;
+        container.classList.remove('content-placeholder');
+        const societies = { General: 'Validación General', PTM: 'PTM', PJPortland: 'PJ Portland', Noviciado: 'Noviciado',Perez_y_Jacard: 'Perez y Jacard', Peru: 'Perú', Colombia: 'Colombia', Epoxa: 'Epoxa', Distribuidora_Portland: 'Dist. Portland' };
+        let tableHTML = '<table class="w-full text-sm text-left text-slate-500 border-collapse">';
+        
+        tableHTML += '<thead class="text-xs text-slate-700 uppercase bg-slate-100"><tr>';
+        tableHTML += '<th scope="col" class="px-6 py-3 border border-slate-200 sticky left-0 bg-slate-100 z-10 w-1/4">Definición Global</th>';
+        for (const key in societies) { tableHTML += `<th scope="col" class="px-6 py-3 border border-slate-200">${societies[key]}</th>`; }
+        tableHTML += '</tr></thead><tbody>';
+
+        for (const defKey in window.globalDefinitionsData) {
+            tableHTML += '<tr class="bg-white hover:bg-slate-50">';
+            tableHTML += `<th scope="row" class="px-6 py-4 font-bold text-slate-900 border border-slate-200 sticky left-0 bg-white z-10 w-1/4">${window.globalDefinitionsData[defKey].title}</th>`;
+            for (const societyKey in societies) {
+                tableHTML += '<td class="px-4 py-2 border border-slate-200 align-top">';
+                const areaKeys = window.keyUserValidationData[defKey]?.[societyKey] || [];
+                if (areaKeys.length > 0) {
+                    areaKeys.forEach(areaKey => {
+                        const area = window.keyUsersByArea[areaKey];
+                        if (area) {
+                           tableHTML += `<span class="area-pill ${area.color}" data-area-key="${areaKey}">${area.name}</span>`;
+                        }
+                    });
+                } else { tableHTML += `<span class="area-pill bg-gray-100 text-gray-500">N/A</span>`; }
+                tableHTML += '</td>';
+            }
+            tableHTML += '</tr>';
+        }
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+    };
+                    const setupInteractivity = function setupInteractivity() {
+        let lastClicked = null;
+        const userCard = document.getElementById('user-card');
+        const userCardHeader = document.getElementById('user-card-header');
+        const userCardList = document.getElementById('user-card-list');
+
+        function clearHighlights() { document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight')); document.querySelectorAll('.silo-component').forEach(el => el.style.opacity = '1'); }
+        function showDetails(htmlContent) { const panel = document.getElementById('details-panel-container'); const contentDiv = document.getElementById('details-content'); contentDiv.innerHTML = htmlContent; panel.classList.add('active'); }
+        function hideDetails() { const panel = document.getElementById('details-panel-container'); panel.classList.remove('active'); lastClicked = null; }
+
+        document.getElementById('global-definitions').addEventListener('click', function(e) {
+            userCard.classList.remove('visible');
+            const target = e.target.closest('.global-template-item');
+            if (!target) return;
+            const key = target.dataset.key;
+            if (lastClicked === target) { clearHighlights(); hideDetails(); return; }
+            clearHighlights();
+            target.classList.add('highlight');
+            lastClicked = target;
+            document.querySelectorAll('.silo-component').forEach(el => { el.style.opacity = (el.dataset.compKey !== key) ? '0.3' : '1'; if (el.dataset.compKey === key) el.classList.add('highlight'); });
+            const data = window.globalDefinitionsData[key];
+            showDetails(`<h3 class="text-xl font-bold text-sky-800 mb-2">Definición Global: ${data.title}</h3><div class="text-slate-700 text-sm">${data.details}</div>`);
+        });
+
+        document.getElementById('silos-container').addEventListener('click', function(e) {
+            userCard.classList.remove('visible');
+            const target = e.target.closest('.silo-component');
+            if (!target) return;
+            const siloKey = target.dataset.siloKey;
+            const compKey = target.dataset.compKey;
+            if (lastClicked === target) { clearHighlights(); hideDetails(); return; }
+            clearHighlights();
+            target.classList.add('highlight');
+            lastClicked = target;
+            document.getElementById(`global-${compKey}`).classList.add('highlight');
+            const siloData = window.companySilosData[siloKey];
+            const compData = siloData.components[compKey];
+            const globalData = window.globalDefinitionsData[compKey];
+            showDetails(`<div class="mb-4 border-b border-sky-200 pb-3"><p class="text-xs font-semibold text-slate-500">DEFINICIÓN GLOBAL DE REFERENCIA</p><h3 class="text-xl font-bold text-sky-800 mt-1 mb-2">${globalData.title}</h3><p class="text-sm text-slate-600">${globalData.description}</p></div><div><h3 class="text-lg font-bold text-slate-800 mb-2">Aplicación Específica en ${siloData.name}</h3><p class="text-slate-700 text-sm">${compData.details}</p></div>`);
+        });
+
+        document.getElementById('key-user-matrix').addEventListener('click', function(e) {
+            const target = e.target.closest('.area-pill');
+            if (!target || target.textContent === 'N/A') { userCard.classList.remove('visible'); return; }
+            e.stopPropagation();
+            const areaKey = target.dataset.areaKey;
+            const areaData = window.keyUsersByArea[areaKey];
+            if (!areaData) return;
+            userCardHeader.className = `px-4 py-2 border-b font-bold text-white rounded-t-lg ${areaData.headerColor}`;
+            userCardHeader.textContent = areaData.name;
+            let listHTML = '';
+            if (areaData.leader) { listHTML += `<li class="font-bold text-slate-800">${areaData.leader} (Líder)</li>`; }
+            if (areaData.users) { areaData.users.forEach(user => { listHTML += `<li class="text-slate-600">${user}</li>`; }); }
+            userCardList.innerHTML = listHTML;
+            const rect = target.getBoundingClientRect();
+            userCard.style.top = `${window.scrollY + rect.bottom + 5}px`;
+            userCard.style.left = `${window.scrollX + rect.left}px`;
+            userCard.classList.add('visible');
+        });
+        
+        document.getElementById('gantt-chart').addEventListener('click', function(e) {
+            const target = e.target.closest('.gantt-summary-bar');
+            if (!target) return;
+
+            const society = target.dataset.society;
+            const detailContainer = document.getElementById(`gantt-detail-${society}`);
+            const icon = target.querySelector('svg');
+
+            if (detailContainer.classList.contains('active')) {
+                detailContainer.classList.remove('active');
+                icon.classList.remove('rotate-90');
+            } else {
+                // Render detail if it's not already there
+                if (detailContainer.innerHTML === '') {
+                    const overallStart = new Date('2025-09-01T00:00:00');
+                    const overallEnd = new Date('2026-06-01T00:00:00');
+                    const totalDuration = overallEnd.getTime() - overallStart.getTime();
+                    let detailHTML = '';
+                    
+                    const activities = window.ganttDataBySociety[society];
+                    activities.forEach(item => {
+                        const formattedStart = parseDateDDMMYYYY(item.start);
+                        const formattedEnd = parseDateDDMMYYYY(item.end);
+ 
+                        if (!formattedStart || !formattedEnd) return;
+ 
+                        const itemStart = new Date(formattedStart + 'T00:00:00');
+                        const itemEnd = new Date(formattedEnd + 'T00:00:00');
+ 
+                        const offset = ((itemStart.getTime() - overallStart.getTime()) / totalDuration) * 100;
+                        
+                        // Check if the activity is a milestone (start date equals end date)
+                        if (item.start === item.end) {
+                            // It's a milestone, render a star
+                            const textColorClass = item.color.split(' ').find(c => c.startsWith('text-')) || 'text-slate-500';
+                            detailHTML += `
+                                <div class="flex items-center h-8">
+                                    <div class="pr-4 text-xs text-right text-slate-600 font-bold shrink-0" style="width: 200px;">${item.name || ''}</div>
+                                    <div class="flex-grow h-full relative">
+                                        <div class="absolute ${textColorClass}" style="left: ${offset}%; transform: translateX(-50%);">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            // It's a regular activity bar
+                            const width = ((itemEnd.getTime() - itemStart.getTime()) / totalDuration) * 100;
+                            const bgColor = item.color || 'bg-gray-400';
+                            if (width > 0 && offset >= 0) {
+                            detailHTML += `
+                                <div class="flex items-center h-8">
+                                    <div class="pr-4 text-xs text-right text-slate-600 shrink-0" style="width: 200px;">${item.name || ''}</div>
+                                    <div class="flex-grow h-full relative">
+                                        <div class="absolute h-full rounded ${bgColor}" style="left: ${offset}%; width: ${width}%;"></div>
+                                    </div>
+                                </div>
+                            `;
+                            }
+                        }
+                    });
+                    detailContainer.innerHTML = `<div class="py-2 space-y-1">${detailHTML}</div>`;
+                }
+                
+                // Close other open details
+                document.querySelectorAll('.gantt-detail-container.active').forEach(openDetail => {
+                    openDetail.classList.remove('active');
+                    openDetail.previousElementSibling.querySelector('svg').classList.remove('rotate-90');
+                });
+                detailContainer.classList.add('active');
+                icon.classList.add('rotate-90');
+            }
+        });
+
+        document.body.addEventListener('click', () => { userCard.classList.remove('visible'); });
+
+        // --- LÓGICA DE EXPORTACIÓN ---
+
+        // Función auxiliar para capturar una sección como PNG
+        async function captureSectionAsPNG(sectionId) {
+            const sectionElement = document.getElementById(sectionId);
+            if (!sectionElement) return null;
+
+            const button = sectionElement.querySelector('.export-section-btn');
+            if (button) button.style.display = 'none'; // Ocultar botón de la captura
+
+            const canvas = await html2canvas(sectionElement, {
+                scale: 2.5, // Mayor resolución para impresión
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+                onclone: (clonedDoc) => {
+                    const clonedSection = clonedDoc.getElementById(sectionId);
+                    if (!clonedSection) return;
+
+                    // Forzar la expansión de contenedores con scroll para capturar todo el contenido
+                    const elementsToExpand = clonedSection.querySelectorAll('#gantt-chart, #key-user-matrix');
+                    elementsToExpand.forEach(el => {
+                        el.style.overflow = 'visible';
+                        el.style.height = 'auto';
+                    });
+
+                    // Forzar que los encabezados 'sticky' se comporten como estáticos
+                    const stickyElements = clonedSection.querySelectorAll('.sticky');
+                    stickyElements.forEach(el => el.style.position = 'static');
+                }
+            });
+
+            if (button) button.style.display = ''; // Restaurar visibilidad del botón
+
+            return canvas.toDataURL('image/png');
+        }
+
+        // Configura los botones de exportación individuales
+        function setupSectionExport() {
+            if (!window.html2canvas) return; // No hacer nada si html2canvas no se cargó
+            document.querySelectorAll('.export-section-btn').forEach(button => {
+                button.addEventListener('click', async function() {
+                    const sectionId = this.dataset.sectionId;
+                    const filename = this.dataset.filename;
+                    this.innerHTML = '<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+                    const dataUrl = await captureSectionAsPNG(sectionId);
+                    if (dataUrl) {
+                        const link = document.createElement('a');
+                        link.download = filename;
+                        link.href = dataUrl;
+                        link.click();
+                    }
+                    this.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>';
+                });
+            });
+        }
+
+        // Configura el botón de exportar todo a ZIP
+        document.getElementById('export-all-btn').addEventListener('click', async function() {
+            if (!window.JSZip || !window.html2canvas) return; // No hacer nada si las librerías no están
+            const zip = new JSZip();
+            const buttons = document.querySelectorAll('.export-section-btn');
+            const originalText = this.innerHTML;
+            this.innerHTML = '<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Exportando...';
+            this.disabled = true;
+
+            for (const button of buttons) {
+                const sectionId = button.dataset.sectionId;
+                const filename = button.dataset.filename;
+                const dataUrl = await captureSectionAsPNG(sectionId);
+                if (dataUrl) {
+                    // La dataURL viene con 'data:image/png;base64,', hay que quitarlo para JSZip
+                    zip.file(filename, dataUrl.split(',')[1], { base64: true });
+                }
+            }
+
+            zip.generateAsync({ type: "blob" }).then(content => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = "Dashboard_SAP_Export.zip";
+                link.click();
+                URL.revokeObjectURL(link.href);
+            });
+
+            this.innerHTML = originalText;
+            this.disabled = false;
+        });
+
+        // Configura el botón de exportar HTML estático
+        document.getElementById('export-btn').addEventListener('click', async function() {
+            // 1. Clonar el nodo <html> completo para no modificar la página actual.
+            const staticDoc = document.documentElement.cloneNode(true);
+
+            // 2. Eliminar elementos no deseados del clon.
+            staticDoc.querySelector('#upload-section')?.remove();
+            staticDoc.querySelector('#controls-section')?.remove(); // Elimina el botón de exportar.
+            staticDoc.querySelectorAll('.export-section-btn').forEach(btn => btn.remove()); // Elimina botones de sección
+            staticDoc.querySelector('#details-panel-container')?.classList.remove('active'); // Ocultar panel de detalles si está abierto
+
+            // 3. Capturar el estado actual de los datos del window para incrustarlos en el script estático.
+            const capturedGlobalDefinitionsData = JSON.stringify(window.globalDefinitionsData || {});
+            const capturedCompanySilosData = JSON.stringify(window.companySilosData || {});
+            const capturedWorkshopGrouping = JSON.stringify(window.workshopGrouping || {});
+            const capturedGanttDataBySociety = JSON.stringify(window.ganttDataBySociety || {});
+            const capturedKeyUsersByArea = JSON.stringify(window.keyUsersByArea || {});
+            const capturedKeyUserValidationData = JSON.stringify(window.keyUserValidationData || {});
+
+            // 4. Encontrar el script principal y modificar su contenido para la versión estática.
+            const originalScript = staticDoc.querySelector('script:not([src])'); // Selecciona el script inline
+            if (originalScript) {
+                let scriptContent = `
+                    // Datos incrustados para la versión estática
+                    const globalDefinitionsData = JSON.parse('${capturedGlobalDefinitionsData}');
+                    const companySilosData = JSON.parse('${capturedCompanySilosData}');
+                    const workshopGrouping = JSON.parse('${capturedWorkshopGrouping}');
+                    const ganttDataBySociety = JSON.parse('${capturedGanttDataBySociety}');
+                    const keyUsersByArea = JSON.parse('${capturedKeyUsersByArea}');
+                    const keyUserValidationData = JSON.parse('${capturedKeyUserValidationData}');
+
+                    // Asignar a window para compatibilidad con las funciones existentes
+                    Object.assign(window, { globalDefinitionsData, companySilosData, workshopGrouping, ganttDataBySociety, keyUsersByArea, keyUserValidationData });
+
+                    // Asegurarse de que el contenido principal sea visible
+                    document.getElementById('main-content').classList.remove('hidden');
+
+                    // Definiciones de funciones necesarias para el renderizado y la interactividad
+                    // El orden es importante: definir funciones individuales primero.
+                    // NOTA: setupSectionExport no se incluye aquí, ya que html2canvas no se inyecta en el estático.
+                    const parseDateDDMMYYYY = ${parseDateDDMMYYYY.toString()};
+                    const renderGlobalDefinitions = ${renderGlobalDefinitions.toString()};
+                    const renderSilos = ${renderSilos.toString()};
+                    const renderGanttChart = ${renderGanttChart.toString()};
+                    const renderKeyUserMatrix = ${renderKeyUserMatrix.toString()};
+                    const setupInteractivity = ${setupInteractivity.toString()};
+                    const renderAll = ${renderAll.toString()}; // renderAll llama a las funciones de arriba y a setupInteractivity
+
+                    // Ejecutar el renderizado y la interactividad
+                    renderAll();
+                `;
+                originalScript.textContent = scriptContent;
+            }
+
+            // 5. Asegurarse de que el contenido principal sea visible en el archivo estático (por si acaso).
+            const mainContent = staticDoc.querySelector('#main-content');
+            if (mainContent) { mainContent.classList.remove('hidden'); }
+
+            // 6. Convertir el documento clonado y modificado a texto HTML.
+            const staticHtml = '<!DOCTYPE html>\n' + staticDoc.outerHTML;
+
+            // 7. Crear un Blob para el contenido HTML.
+            const blob = new Blob([staticHtml], { type: 'text/html' });
+
+            // 8. Usar la API File System Access (si está disponible) para mostrar el diálogo "Guardar como".
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'Avance de Implementación.html',
+                        types: [{
+                            description: 'Archivo HTML',
+                            accept: { 'text/html': ['.html'] },
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                } catch (err) {
+                    // El usuario canceló el diálogo de guardado o hubo un error.
+                    console.log('Guardado cancelado o fallido.', err);
+                }
+            } else {
+                // Fallback para navegadores más antiguos: descarga directa.
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Avance de Implementación.html'; // Nombre de archivo por defecto.
+                a.click();
+                URL.revokeObjectURL(url); // Liberar memoria.
+            }
+        });
+
+        // Llamar a la configuración de exportación después de que todo lo demás esté listo.
+        setupSectionExport();
+    };
+                    const renderAll = function renderAll() {
+        const renderFunctions = [renderGanttChart, renderGlobalDefinitions, renderSilos, renderKeyUserMatrix];
+        renderFunctions.forEach(fn => {
+            try {
+                fn();
+            } catch (error) {
+                console.error(`Error rendering section with function ${fn.name}:`, error);
+            }
+        });
+        setupInteractivity();
+    }; // renderAll llama a las funciones de arriba y a setupInteractivity
+
+                    // Ejecutar el renderizado y la interactividad
+                    renderAll();
+                </script>
+
+
+</body></html>
